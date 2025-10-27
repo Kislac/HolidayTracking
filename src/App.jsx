@@ -229,7 +229,7 @@ export default function App() {
       {/* Bal oldali panel – Lista és szűrők */}
       <section className="lg:col-span-1 space-y-4">
         <header className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Utazás napló
+          <h1 className="text-2xl font-bold">Utazás napló2
           </h1>
           <div className="text-sm text-gray-600">Látogatott országok: <b>{stats.countriesCount}</b> • Helyek: <b>{stats.visitedCount}</b> ✓ / <b>{stats.wishlistCount}</b> kívánság</div>
         </header>
