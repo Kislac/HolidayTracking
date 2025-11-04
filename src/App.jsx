@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMapEvents, GeoJSON } from "r
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { v4 as uuidv4 } from "uuid";
+import { supabase } from "./supabaseClient";
 
 // Alap Leaflet ikon javítás (különben nem látszik a marker)
 import iconUrl from "leaflet/dist/images/marker-icon.png";
@@ -67,6 +68,23 @@ function MapClickCapture({ onSelect }) {
   return null;
 }
 
+function mapDbRowToPlace(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    country: row.country,
+    countryCode: row.country_code || row.countryCode || undefined,
+    city: row.city,
+    lat: Number(row.lat) || 0,
+    lng: Number(row.lng) || 0,
+    status: row.status,
+    dateVisited: row.date_visited ? String(row.date_visited).split("T")[0] : "",
+    rating: row.rating || 0,
+    notes: row.notes || "",
+    tags: Array.isArray(row.tags) ? row.tags : (row.tags ? JSON.parse(row.tags) : []),
+  };
+}
+
 // ---- Fő alkalmazás ----
 export default function App() {
   const [places, setPlaces] = useState(() => loadFromStorage() ?? seedPlaces);
@@ -74,6 +92,12 @@ export default function App() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
   const [newCoords, setNewCoords] = useState([47.4979, 19.0402]); // Budapest default
+
+  // Supabase / auth state
+  const [user, setUser] = useState(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const fileRef = useRef();
 
   // --- Új: countries GeoJSON és mapping ---
   const [countriesGeo, setCountriesGeo] = useState(null);
@@ -104,7 +128,110 @@ export default function App() {
     return countryNameToAlpha2.get(key) || null;
   }
 
-  useEffect(() => saveToStorage(places), [places]);
+  // Supabase auth listener
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUser(data?.user ?? null));
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  // Load places from DB when user logs in
+  useEffect(() => {
+    if (!user) {
+      // no user: keep local storage
+      setPlaces(prev => loadFromStorage() ?? prev ?? seedPlaces);
+      return;
+    }
+    loadPlacesFromDb();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  useEffect(() => {
+    // local backup
+    if (!user) saveToStorage(places);
+  }, [places, user]);
+
+  async function loadPlacesFromDb() {
+    try {
+      const { data, error } = await supabase
+        .from("places")
+        .select("*")
+        .eq("owner", user.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      if (Array.isArray(data)) {
+        setPlaces(data.map(mapDbRowToPlace));
+      }
+    } catch (e) {
+      console.error("Hiba DB betöltéskor:", e);
+    }
+  }
+
+  async function insertPlaceToDb(place) {
+    if (!user) return;
+    const row = {
+      name: place.name,
+      country: place.country,
+      country_code: place.countryCode,
+      city: place.city,
+      lat: place.lat,
+      lng: place.lng,
+      status: place.status,
+      date_visited: place.dateVisited || null,
+      rating: place.rating || 0,
+      notes: place.notes || "",
+      tags: place.tags || [],
+      owner: user.id,
+    };
+    try {
+      const { data, error } = await supabase.from("places").insert(row).select().single();
+      if (error) throw error;
+      // replace temp local id with DB id
+      setPlaces(prev => prev.map(p => (p.id === place.id ? mapDbRowToPlace(data) : p)));
+    } catch (e) {
+      console.error("Insert hiba:", e);
+    }
+  }
+
+  async function updatePlaceInDb(id, updates) {
+    if (!user) return;
+    const dbUpdates = {
+      ...(updates.name !== undefined && { name: updates.name }),
+      ...(updates.country !== undefined && { country: updates.country }),
+      ...(updates.countryCode !== undefined && { country_code: updates.countryCode }),
+      ...(updates.city !== undefined && { city: updates.city }),
+      ...(updates.lat !== undefined && { lat: updates.lat }),
+      ...(updates.lng !== undefined && { lng: updates.lng }),
+      ...(updates.status !== undefined && { status: updates.status }),
+      ...(updates.dateVisited !== undefined && { date_visited: updates.dateVisited || null }),
+      ...(updates.rating !== undefined && { rating: updates.rating }),
+      ...(updates.notes !== undefined && { notes: updates.notes }),
+      ...(updates.tags !== undefined && { tags: updates.tags || [] }),
+      owner: user.id
+    };
+    try {
+      const { data, error } = await supabase.from("places").update(dbUpdates).eq("id", id).select().single();
+      if (error) throw error;
+      setPlaces(prev => prev.map(p => (p.id === id ? mapDbRowToPlace(data) : p)));
+    } catch (e) {
+      console.error("Update hiba:", e);
+    }
+  }
+
+  async function deletePlaceFromDb(id) {
+    if (!user) return;
+    try {
+      const { error } = await supabase.from("places").delete().eq("id", id);
+      if (error) throw error;
+      setPlaces(prev => prev.filter(p => p.id !== id));
+    } catch (e) {
+      console.error("Delete hiba:", e);
+    }
+  }
 
   const selected = useMemo(() => places.find(p => p.id === selectedId) || null, [places, selectedId]);
 
@@ -154,7 +281,7 @@ export default function App() {
     };
   }
 
-  function addPlaceFromForm(formEl) {
+  async function addPlaceFromForm(formEl) {
     const f = new FormData(formEl);
     const name = f.get("name").toString().trim();
     if (!name) return;
@@ -172,17 +299,37 @@ export default function App() {
     if (!isFinite(lng)) lng = newCoords?.[1] ?? 0;
 
     const newPlace = { id: uuidv4(), name, country, countryCode, city, lat, lng, status, dateVisited, rating, notes, tags };
+
     setPlaces(prev => [newPlace, ...prev]);
+
+    // if logged in, insert to DB and replace temp id with DB id
+    if (user) {
+      await insertPlaceToDb(newPlace);
+    } else {
+      saveToStorage([newPlace, ...places]);
+    }
+
     formEl.reset();
   }
 
   function updateSelected(field, value) {
+    // optimistic update
     setPlaces(prev => prev.map(p => p.id === selectedId ? { ...p, [field]: value } : p));
+    if (user && selectedId) {
+      updatePlaceInDb(selectedId, { [field]: value });
+    } else {
+      saveToStorage(places.map(p => p.id === selectedId ? { ...p, [field]: value } : p));
+    }
   }
 
   function removePlace(id) {
-    setPlaces(prev => prev.filter(p => p.id !== id));
-    if (selectedId === id) setSelectedId(null);
+    if (user) {
+      deletePlaceFromDb(id);
+    } else {
+      setPlaces(prev => prev.filter(p => p.id !== id));
+      saveToStorage(places.filter(p => p.id !== id));
+      if (selectedId === id) setSelectedId(null);
+    }
   }
 
   function exportJson() {
@@ -214,6 +361,7 @@ export default function App() {
             tags: Array.isArray(p.tags) ? p.tags.map(String) : []
           }));
           setPlaces(normalized);
+          if (!user) saveToStorage(normalized);
         }
       } catch (e) {
         alert("Hibás JSON fájl");
@@ -222,17 +370,56 @@ export default function App() {
     reader.readAsText(file);
   }
 
-  const fileRef = useRef();
+  // Auth helpers
+  async function signUp() {
+    try {
+      const { error } = await supabase.auth.signUp({ email: authEmail, password: authPassword });
+      if (error) throw error;
+      alert("Regisztráció: ellenőrizd az emailed a megerősítéshez (ha szükséges).");
+    } catch (e) {
+      alert("Sign up hiba: " + e.message);
+    }
+  }
+  async function signIn() {
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+      if (error) throw error;
+      setAuthPassword("");
+    } catch (e) {
+      alert("Sign in hiba: " + e.message);
+    }
+  }
+  async function signOut() {
+    await supabase.auth.signOut();
+    setUser(null);
+    setPlaces(loadFromStorage() ?? seedPlaces);
+  }
 
   return (
     <div className="min-h-screen grid grid-cols-1 lg:grid-cols-3 gap-4 p-4 bg-gray-50">
       {/* Bal oldali panel – Lista és szűrők */}
       <section className="lg:col-span-1 space-y-4">
         <header className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Utazás napló2
+          <h1 className="text-2xl font-bold">Utazás napló
           </h1>
-          <div className="text-sm text-gray-600">Látogatott országok: <b>{stats.countriesCount}</b> • Helyek: <b>{stats.visitedCount}</b> ✓ / <b>{stats.wishlistCount}</b> kívánság</div>
+          <div className="text-sm text-gray-600">
+            {user ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs">{user.email}</span>
+                <button className="text-xs px-2 py-1 rounded-lg border" onClick={signOut}>Kijelentkezés</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input className="rounded-xl border p-1 text-xs" placeholder="email" value={authEmail} onChange={(e)=>setAuthEmail(e.target.value)} />
+                <input type="password" className="rounded-xl border p-1 text-xs" placeholder="jelszó" value={authPassword} onChange={(e)=>setAuthPassword(e.target.value)} />
+                <button className="text-xs px-2 py-1 rounded-lg border" onClick={signIn}>Bejelentkezés</button>
+                <button className="text-xs px-2 py-1 rounded-lg border" onClick={signUp}>Regisztráció</button>
+              </div>
+            )}
+          </div>
         </header>
+
+        <div className="text-sm text-gray-600">Látogatott országok: <b>{stats.countriesCount}</b> • Helyek: <b>{stats.visitedCount}</b> ✓ / <b>{stats.wishlistCount}</b> kívánság</div>
 
         {/* Kereső és státusz szűrő */}
         <div className="flex gap-2">
