@@ -99,6 +99,11 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState("");
   const fileRef = useRef();
 
+  // Modal state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editPlace, setEditPlace] = useState(null);
+  const [deleteId, setDeleteId] = useState(null);
+
   // --- Új: countries GeoJSON és mapping ---
   const [countriesGeo, setCountriesGeo] = useState(null);
   useEffect(() => {
@@ -312,15 +317,7 @@ export default function App() {
     formEl.reset();
   }
 
-  function updateSelected(field, value) {
-    // optimistic update
-    setPlaces(prev => prev.map(p => p.id === selectedId ? { ...p, [field]: value } : p));
-    if (user && selectedId) {
-      updatePlaceInDb(selectedId, { [field]: value });
-    } else {
-      saveToStorage(places.map(p => p.id === selectedId ? { ...p, [field]: value } : p));
-    }
-  }
+
 
   function removePlace(id) {
     if (user) {
@@ -330,44 +327,6 @@ export default function App() {
       saveToStorage(places.filter(p => p.id !== id));
       if (selectedId === id) setSelectedId(null);
     }
-  }
-
-  function exportJson() {
-    const blob = new Blob([JSON.stringify(places, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "utazasok.json";
-    a.click();
-  }
-
-  function importJson(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const arr = JSON.parse(String(reader.result));
-        if (Array.isArray(arr)) {
-          const normalized = arr.map((p) => ({
-            id: p.id ?? uuidv4(),
-            name: String(p.name||"").trim(),
-            country: String(p.country||"").trim(),
-            countryCode: String(p.countryCode||p.countryCode||"").trim().toUpperCase() || undefined,
-            city: String(p.city||"").trim(),
-            lat: Number(p.lat) || 0,
-            lng: Number(p.lng) || 0,
-            status: (p.status === "visited" ? "visited" : "wishlist"),
-            dateVisited: String(p.dateVisited||""),
-            rating: Number(p.rating||0),
-            notes: String(p.notes||""),
-            tags: Array.isArray(p.tags) ? p.tags.map(String) : []
-          }));
-          setPlaces(normalized);
-          if (!user) saveToStorage(normalized);
-        }
-      } catch (e) {
-        alert("Hibás JSON fájl");
-      }
-    };
-    reader.readAsText(file);
   }
 
   // Auth helpers
@@ -394,203 +353,228 @@ export default function App() {
     setUser(null);
     setPlaces(loadFromStorage() ?? seedPlaces);
   }
+  // Add new place modal handler
+  function handleAddPlace(e) {
+    e.preventDefault();
+    addPlaceFromForm(e.target);
+    setShowAddModal(false);
+  }
 
+  // Edit modal handler
+  function handleEditPlace(e) {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const updates = {
+      name: f.get("name"),
+      country: f.get("country"),
+      countryCode: f.get("countryCode"),
+      city: f.get("city"),
+      lat: Number(f.get("lat")),
+      lng: Number(f.get("lng")),
+      status: f.get("status"),
+      dateVisited: f.get("dateVisited"),
+      rating: Number(f.get("rating")),
+      notes: f.get("notes"),
+      tags: f.get("tags").split(",").map(s=>s.trim()).filter(Boolean),
+    };
+    updatePlaceInDb(editPlace.id, updates);
+    setEditPlace(null);
+  }
+
+  // Delete confirmation
+  function confirmDelete(id) {
+    setDeleteId(id);
+  }
+  function handleDeleteConfirmed() {
+    removePlace(deleteId);
+    setDeleteId(null);
+  }
   return (
-    <div className="min-h-screen grid grid-cols-1 lg:grid-cols-3 gap-4 p-4 bg-gray-50">
-      {/* Bal oldali panel – Lista és szűrők */}
-      <section className="lg:col-span-1 space-y-4">
-        <header className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Utazás napló
-          </h1>
-          <div className="text-sm text-gray-600">
-            {user ? (
-              <div className="flex items-center gap-2">
-                <span className="text-xs">{user.email}</span>
-                <button className="text-xs px-2 py-1 rounded-lg border" onClick={signOut}>Kijelentkezés</button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <input className="rounded-xl border p-1 text-xs" placeholder="email" value={authEmail} onChange={(e)=>setAuthEmail(e.target.value)} />
-                <input type="password" className="rounded-xl border p-1 text-xs" placeholder="jelszó" value={authPassword} onChange={(e)=>setAuthPassword(e.target.value)} />
-                <button className="text-xs px-2 py-1 rounded-lg border" onClick={signIn}>Bejelentkezés</button>
-                <button className="text-xs px-2 py-1 rounded-lg border" onClick={signUp}>Regisztráció</button>
-              </div>
-            )}
-          </div>
-        </header>
-
-        <div className="text-sm text-gray-600">Látogatott országok: <b>{stats.countriesCount}</b> • Helyek: <b>{stats.visitedCount}</b> ✓ / <b>{stats.wishlistCount}</b> kívánság</div>
-
-        {/* Kereső és státusz szűrő */}
-        <div className="flex gap-2">
-          <input
-            className="w-full rounded-xl border p-2"
-            placeholder="Keresés (név, ország, város, címke)"
-            value={filterText}
-            onChange={(e)=>setFilterText(e.target.value)}
-          />
-          <select className="rounded-xl border p-2" value={filterStatus} onChange={(e)=>setFilterStatus(e.target.value)}>
-            <option value="all">Mind</option>
-            <option value="visited">Meglátogatott</option>
-            <option value="wishlist">Kívánságlista</option>
-          </select>
-        </div>
-
-        {/* Helyek lista */}
-        <div className="bg-white rounded-2xl shadow p-2 max-h-[45vh] overflow-auto">
-          {filtered.length === 0 && (
-            <div className="text-center text-gray-500 py-8">Nincs találat.</div>
-          )}
-          <ul className="divide-y">
-            {filtered.map(p => (
-              <li key={p.id} className={`p-2 hover:bg-gray-50 rounded-xl flex items-center gap-2 ${selectedId===p.id?"ring-2 ring-blue-200": ""}`}>
-                <button className="text-left flex-1" onClick={()=>setSelectedId(p.id)}>
-                  <div className="font-semibold flex items-center gap-2">
-                    <span className={`inline-block w-2 h-2 rounded-full ${p.status==="visited"?"bg-green-500":"bg-blue-500"}`}></span>
-                    {p.name}
-                  </div>
-                  <div className="text-xs text-gray-500">{p.city || ""}{p.city && p.country ? ", " : ""}{p.country || ""}</div>
-                </button>
-                <button className="text-xs px-2 py-1 rounded-lg border" onClick={()=>updateSelected("status", p.status==="visited"?"wishlist":"visited") || setSelectedId(p.id)}>
-                  {p.status === "visited" ? "→ kívánság" : "✓ meglátogatott"}
-                </button>
-                <button className="text-xs px-2 py-1 rounded-lg border text-red-600" onClick={()=>removePlace(p.id)}>Töröl</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Export/Import */}
-        <div className="flex gap-2">
-          <button className="flex-1 rounded-xl border p-2" onClick={exportJson}>Export JSON</button>
-          <input type="file" accept="application/json" ref={fileRef} className="hidden" onChange={(e)=> e.target.files?.[0] && importJson(e.target.files[0])} />
-          <button className="flex-1 rounded-xl border p-2" onClick={()=>fileRef.current?.click()}>Import JSON</button>
-        </div>
-      </section>
-
-      {/* Középső – Térkép */}
-      <section className="lg:col-span-2 grid grid-rows-[1fr_auto] gap-4">
-        <div className="rounded-2xl overflow-hidden shadow">
-          <MapContainer center={[47.5, 19.04]} zoom={6} style={{ height: "60vh", width: "100%" }}>
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> közreműködők'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <MapClickCapture onSelect={(coords)=>setNewCoords(coords)} />
-
-            {/* GeoJSON országhatárok (ha betöltődött) */}
-            {countriesGeo && (
-              <GeoJSON data={countriesGeo} style={countryStyle} />
-            )}
-
-            {places.map(p => (
-              <Marker key={p.id} position={[p.lat, p.lng]} eventHandlers={{ click: () => setSelectedId(p.id) }}>
-                <Popup>
-                  <div className="space-y-1">
-                    <div className="font-semibold">{p.name}</div>
-                    <div className="text-xs text-gray-600">{p.city}{p.city && p.country ? ", " : ""}{p.country}</div>
-                    {p.status === "visited" ? (
-                      <div className="text-xs">✅ Meglátogatva {p.dateVisited || "–"} • ⭐ {p.rating || 0}/5</div>
-                    ) : (
-                      <div className="text-xs">📝 Kívánságlista</div>
-                    )}
-                    {p.notes && <div className="text-xs text-gray-700">{p.notes}</div>}
-                    <button className="mt-1 text-xs underline" onClick={()=>setSelectedId(p.id)}>Megnyitás</button>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
-
-            {/* Új hely ideiglenes marker */}
-            {newCoords && (
-              <Marker position={newCoords}>
-                <Popup>Új hely kijelölve: {newCoords[0].toFixed(4)}, {newCoords[1].toFixed(4)}</Popup>
-              </Marker>
-            )}
-          </MapContainer>
-        </div>
-
-        {/* Új hely hozzáadása űrlap */}
-        <div className="bg-white rounded-2xl shadow p-4">
-          <h2 className="font-semibold mb-2">Új hely hozzáadása</h2>
-          <form className="grid md:grid-cols-3 gap-3 items-start" onSubmit={(e)=>{e.preventDefault(); addPlaceFromForm(e.currentTarget);}}>
-              <input name="name" className="rounded-xl border p-2" placeholder="Hely neve (pl. Bledi-tó)" required />
-              <input name="country" className="rounded-xl border p-2" placeholder="Ország (név)" />
-              <input name="countryCode" className="rounded-xl border p-2" placeholder="Ország ISO-kód (pl. HU)" />
-              <input name="city" className="rounded-xl border p-2" placeholder="Város/Régió" />
-            <div className="flex gap-2">
-              <input name="lat" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Szélesség (lat)"
-                value={newCoords?.[0] ?? ''} onChange={(e)=>setNewCoords([Number(e.target.value), newCoords?.[1] ?? 0])} />
-              <input name="lng" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Hosszúság (lng)"
-                value={newCoords?.[1] ?? ''} onChange={(e)=>setNewCoords([newCoords?.[0] ?? 0, Number(e.target.value)])} />
+    <div className="min-h-screen flex flex-col bg-blue-900">
+      {/* Header */}
+      <header className="flex items-center justify-between px-4 py-3 bg-red-800 shadow">
+        <h1 className="text-2xl font-bold">Holiday Tracking</h1>
+        <div className="text-sm text-gray-600">
+          {user ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs">{user.email}</span>
+              <button className="text-xs px-2 py-1 rounded-lg border" onClick={signOut}>Kijelentkezés</button>
             </div>
-            <select name="status" className="rounded-xl border p-2">
+          ) : (
+            <div className="flex items-center gap-2">
+              <input className="rounded-xl border p-1 text-xs" placeholder="email" value={authEmail} onChange={(e)=>setAuthEmail(e.target.value)} />
+              <input type="password" className="rounded-xl border p-1 text-xs" placeholder="jelszó" value={authPassword} onChange={(e)=>setAuthPassword(e.target.value)} />
+              <button className="text-xs px-2 py-1 rounded-lg border" onClick={signIn}>Bejelentkezés</button>
+              <button className="text-xs px-2 py-1 rounded-lg border" onClick={signUp}>Regisztráció</button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+        {/* Left: Place list */}
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm text-gray-600">
+              Látogatott országok: <b>{stats.countriesCount}</b> • Helyek: <b>{stats.visitedCount}</b> ✓ / <b>{stats.wishlistCount}</b> kívánság
+            </div>
+            <button className="px-3 py-1 rounded-xl bg-blue-500 text-white text-xs" onClick={()=>setShowAddModal(true)}>
+              Add new place
+            </button>
+          </div>
+          <div className="flex gap-2 mb-2">
+            <input
+              className="w-full rounded-xl border p-2"
+              placeholder="Keresés (név, ország, város, címke)"
+              value={filterText}
+              onChange={(e)=>setFilterText(e.target.value)}
+            />
+            <select className="rounded-xl border p-2" value={filterStatus} onChange={(e)=>setFilterStatus(e.target.value)}>
+              <option value="all">Mind</option>
               <option value="visited">Meglátogatott</option>
               <option value="wishlist">Kívánságlista</option>
             </select>
-            <input name="dateVisited" type="date" className="rounded-xl border p-2" />
-            <input name="rating" type="number" min={0} max={5} className="rounded-xl border p-2" placeholder="Értékelés (0–5)" />
-            <input name="tags" className="rounded-xl border p-2" placeholder="Címkék (vesszővel)" />
-            <textarea name="notes" className="rounded-xl border p-2 md:col-span-2" placeholder="Jegyzetek" />
-            <button className="rounded-xl border p-2 md:col-span-1">Hozzáadás</button>
-          </form>
-          <p className="text-xs text-gray-500 mt-2">Tipp: a térképen kattintva felül beáll a koordináta (lat/lng).</p>
-        </div>
-      </section>
+          </div>
+          <div className="bg-white rounded-2xl shadow p-2 max-h-[60vh] overflow-auto">
+            {filtered.length === 0 && (
+              <div className="text-center text-gray-500 py-8">Nincs találat.</div>
+            )}
+            <ul className="divide-y">
+              {filtered.map(p => (
+                <li key={p.id} className="p-2 hover:bg-gray-50 rounded-xl flex items-center gap-2">
+                  <button className="text-left flex-1" onClick={()=>setSelectedId(p.id)}>
+                    <div className="font-semibold flex items-center gap-2">
+                      <span className={`inline-block w-2 h-2 rounded-full ${p.status==="visited"?"bg-green-500":"bg-blue-500"}`}></span>
+                      {p.name}
+                    </div>
+                    <div className="text-xs text-gray-500">{p.city || ""}{p.city && p.country ? ", " : ""}{p.country || ""}</div>
+                  </button>
+                  <button className="text-xs px-2 py-1 rounded-lg border" onClick={()=>setEditPlace(p)}>Módosítás</button>
+                  <button className="text-xs px-2 py-1 rounded-lg border text-red-600" onClick={()=>confirmDelete(p.id)}>Törlés</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
 
-      {/* Jobb oldali – Részletek / szerkesztés */}
-      <aside className="lg:col-span-3 xl:col-span-1 xl:col-start-3"></aside>
-      {selected && (
-        <div className="lg:col-span-3 bg-white rounded-2xl shadow p-4">
-          <div className="flex items-start gap-4">
-            <div className="flex-1">
-              <h2 className="font-semibold text-lg">Hely részletei</h2>
-              <div className="grid md:grid-cols-3 gap-3 mt-2">
-                <label className="text-sm">Név
-                  <input className="w-full rounded-xl border p-2" value={selected.name} onChange={(e)=>updateSelected("name", e.target.value)} />
-                </label>
-                <label className="text-sm">Ország
-                  <input className="w-full rounded-xl border p-2" value={selected.country} onChange={(e)=>updateSelected("country", e.target.value)} />
-                </label>
-                <label className="text-sm">Ország ISO
-                  <input className="w-full rounded-xl border p-2" value={selected.countryCode || ""} onChange={(e)=>updateSelected("countryCode", e.target.value.toUpperCase())} />
-                </label>
-                <label className="text-sm">Város
-                  <input className="w-full rounded-xl border p-2" value={selected.city} onChange={(e)=>updateSelected("city", e.target.value)} />
-                </label>
-                <label className="text-sm">Állapot
-                  <select className="w-full rounded-xl border p-2" value={selected.status} onChange={(e)=>updateSelected("status", e.target.value)}>
-                    <option value="visited">Meglátogatott</option>
-                    <option value="wishlist">Kívánságlista</option>
-                  </select>
-                </label>
-                <label className="text-sm">Dátum
-                  <input type="date" className="w-full rounded-xl border p-2" value={selected.dateVisited} onChange={(e)=>updateSelected("dateVisited", e.target.value)} />
-                </label>
-                <label className="text-sm">Értékelés (0–5)
-                  <input type="number" min={0} max={5} className="w-full rounded-xl border p-2" value={selected.rating} onChange={(e)=>updateSelected("rating", Number(e.target.value))} />
-                </label>
-                <label className="text-sm md:col-span-3">Címkék (vesszővel)
-                  <input className="w-full rounded-xl border p-2" value={(selected.tags||[]).join(", ")} onChange={(e)=>updateSelected("tags", e.target.value.split(",").map(s=>s.trim()).filter(Boolean))} />
-                </label>
-                <label className="text-sm md:col-span-3">Jegyzetek
-                  <textarea className="w-full rounded-xl border p-2" value={selected.notes} onChange={(e)=>updateSelected("notes", e.target.value)} />
-                </label>
+        {/* Right: Map */}
+        <section>
+          <div className="rounded-2xl overflow-hidden shadow">
+            <MapContainer center={[47.5, 19.04]} zoom={6} style={{ height: "60vh", width: "100%" }}>
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> közreműködők'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <MapClickCapture onSelect={(coords)=>setNewCoords(coords)} />
+              {countriesGeo && (
+                <GeoJSON data={countriesGeo} style={countryStyle} />
+              )}
+              {places.map(p => (
+                <Marker key={p.id} position={[p.lat, p.lng]} eventHandlers={{ click: () => setSelectedId(p.id) }}>
+                  <Popup>
+                    <div className="space-y-1">
+                      <div className="font-semibold">{p.name}</div>
+                      <div className="text-xs text-gray-600">{p.city}{p.city && p.country ? ", " : ""}{p.country}</div>
+                      {p.status === "visited" ? (
+                        <div className="text-xs">✅ Meglátogatva {p.dateVisited || "–"} • ⭐ {p.rating || 0}/5</div>
+                      ) : (
+                        <div className="text-xs">📝 Kívánságlista</div>
+                      )}
+                      {p.notes && <div className="text-xs text-gray-700">{p.notes}</div>}
+                      <button className="mt-1 text-xs underline" onClick={()=>setSelectedId(p.id)}>Megnyitás</button>
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+              {newCoords && (
+                <Marker position={newCoords}>
+                  <Popup>Új hely kijelölve: {newCoords[0].toFixed(4)}, {newCoords[1].toFixed(4)}</Popup>
+                </Marker>
+              )}
+            </MapContainer>
+          </div>
+        </section>
+      </main>
+
+      {/* Add Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow p-6 w-full max-w-lg">
+            <h2 className="font-semibold mb-2">Új hely hozzáadása</h2>
+            <form className="grid gap-3" onSubmit={handleAddPlace}>
+              <input name="name" className="rounded-xl border p-2" placeholder="Hely neve" required />
+              <input name="country" className="rounded-xl border p-2" placeholder="Ország (név)" />
+              <input name="countryCode" className="rounded-xl border p-2" placeholder="Ország ISO-kód (pl. HU)" />
+              <input name="city" className="rounded-xl border p-2" placeholder="Város/Régió" />
+              <div className="flex gap-2">
+                <input name="lat" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Szélesség (lat)" defaultValue={newCoords?.[0] ?? ''} />
+                <input name="lng" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Hosszúság (lng)" defaultValue={newCoords?.[1] ?? ''} />
               </div>
-            </div>
-            <div className="w-64 shrink-0 space-y-2">
-              <div className="text-sm text-gray-600">Koordináták</div>
-              <div className="grid grid-cols-2 gap-2">
-                <input className="rounded-xl border p-2" value={selected.lat} onChange={(e)=>updateSelected("lat", Number(e.target.value))} />
-                <input className="rounded-xl border p-2" value={selected.lng} onChange={(e)=>updateSelected("lng", Number(e.target.value))} />
+              <select name="status" className="rounded-xl border p-2">
+                <option value="visited">Meglátogatott</option>
+                <option value="wishlist">Kívánságlista</option>
+              </select>
+              <input name="dateVisited" type="date" className="rounded-xl border p-2" />
+              <input name="rating" type="number" min={0} max={5} className="rounded-xl border p-2" placeholder="Értékelés (0–5)" />
+              <input name="tags" className="rounded-xl border p-2" placeholder="Címkék (vesszővel)" />
+              <textarea name="notes" className="rounded-xl border p-2" placeholder="Jegyzetek" />
+              <div className="flex gap-2">
+                <button type="submit" className="rounded-xl border p-2 bg-blue-500 text-white">Hozzáadás</button>
+                <button type="button" className="rounded-xl border p-2" onClick={()=>setShowAddModal(false)}>Mégse</button>
               </div>
-              <button className="w-full rounded-xl border p-2" onClick={()=>setSelectedId(null)}>Bezárás</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editPlace && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow p-6 w-full max-w-lg">
+            <h2 className="font-semibold mb-2">Hely módosítása</h2>
+            <form className="grid gap-3" onSubmit={handleEditPlace}>
+              <input name="name" className="rounded-xl border p-2" placeholder="Hely neve" defaultValue={editPlace.name} required />
+              <input name="country" className="rounded-xl border p-2" placeholder="Ország (név)" defaultValue={editPlace.country} />
+              <input name="countryCode" className="rounded-xl border p-2" placeholder="Ország ISO-kód (pl. HU)" defaultValue={editPlace.countryCode} />
+              <input name="city" className="rounded-xl border p-2" placeholder="Város/Régió" defaultValue={editPlace.city} />
+              <div className="flex gap-2">
+                <input name="lat" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Szélesség (lat)" defaultValue={editPlace.lat} />
+                <input name="lng" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Hosszúság (lng)" defaultValue={editPlace.lng} />
+              </div>
+              <select name="status" className="rounded-xl border p-2" defaultValue={editPlace.status}>
+                <option value="visited">Meglátogatott</option>
+                <option value="wishlist">Kívánságlista</option>
+              </select>
+              <input name="dateVisited" type="date" className="rounded-xl border p-2" defaultValue={editPlace.dateVisited} />
+              <input name="rating" type="number" min={0} max={5} className="rounded-xl border p-2" placeholder="Értékelés (0–5)" defaultValue={editPlace.rating} />
+              <input name="tags" className="rounded-xl border p-2" placeholder="Címkék (vesszővel)" defaultValue={editPlace.tags?.join(", ")} />
+              <textarea name="notes" className="rounded-xl border p-2" placeholder="Jegyzetek" defaultValue={editPlace.notes} />
+              <div className="flex gap-2">
+                <button type="submit" className="rounded-xl border p-2 bg-blue-500 text-white">Mentés</button>
+                <button type="button" className="rounded-xl border p-2" onClick={()=>setEditPlace(null)}>Mégse</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {deleteId && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow p-6 w-full max-w-sm text-center">
+            <h2 className="font-semibold mb-2">Biztosan törölni szeretnéd?</h2>
+            <div className="mb-4 text-gray-700">Ez a művelet nem visszavonható.</div>
+            <div className="flex gap-2 justify-center">
+              <button className="rounded-xl border p-2 bg-red-500 text-white" onClick={handleDeleteConfirmed}>Törlés</button>
+              <button className="rounded-xl border p-2" onClick={()=>setDeleteId(null)}>Mégse</button>
             </div>
           </div>
         </div>
       )}
 
-      <footer className="lg:col-span-3 text-center text-xs text-gray-500 py-2">
+      {/* Footer */}
+      <footer className="text-center text-xs text-gray-500 py-2 bg-white mt-4 shadow">
         Adatok a böngészőben (localStorage) tárolva. Export/Import gombokkal viheted át másik gépre. Forrás: OpenStreetMap csempék.
       </footer>
     </div>

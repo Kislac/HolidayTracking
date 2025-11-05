@@ -1,3 +1,14 @@
+Download and install Node.js from https://nodejs.org (npm comes bundled).
+Restart your terminal or computer after installation.
+Verify installation by running node -v and npm -v in your terminal.
+
+npm install vite --save-dev
+
+
+add .env file to root folder with credentials from supabase
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-public-key
+
 # React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
@@ -21,3 +32,8 @@ https://kislac.github.io/HolidayTracking
 
 npm run build
 npm run deploy
+
+
+
+dev run:
+npm run dev
