@@ -4,6 +4,8 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { v4 as uuidv4 } from "uuid";
 import { supabase } from "./supabaseClient";
+import Toastify from "toastify-js";
+import "toastify-js/src/toastify.css";
 
 // Alap Leaflet ikon javítás (különben nem látszik a marker)
 import iconUrl from "leaflet/dist/images/marker-icon.png";
@@ -58,6 +60,25 @@ const seedPlaces = [
   },
 ];
 
+function showToast(text, type="info") {
+  Toastify({
+    text,
+    duration: 3500,
+    gravity: "top",
+    position: "center",
+    close: true,
+    style: {
+      background: type==="success"
+        ? "linear-gradient(to right,#16a34a,#15803d)"
+        : type==="error"
+        ? "linear-gradient(to right,#dc2626,#b91c1c)"
+        : "linear-gradient(to right,#334155,#1e293b)",
+      borderRadius: "0.75rem",
+      fontSize: "13px"
+    }
+  }).showToast();
+}
+
 // ---- Komponens: Kattintás a térképen koordináta kiválasztáshoz ----
 function MapClickCapture({ onSelect }) {
   useMapEvents({
@@ -67,6 +88,8 @@ function MapClickCapture({ onSelect }) {
   });
   return null;
 }
+
+
 
 function mapDbRowToPlace(row) {
   return {
@@ -92,6 +115,12 @@ export default function App() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
   const [newCoords, setNewCoords] = useState([47.4979, 19.0402]); // Budapest default
+
+  //Register section
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [registerEmail, setRegisterEmail] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [registerError, setRegisterError] = useState("");
 
   // Supabase / auth state
   const [user, setUser] = useState(null);
@@ -125,6 +154,64 @@ export default function App() {
     });
     return m;
   }, [countriesGeo]);
+
+
+  function isValidEmailFormat(v) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  }
+
+  async function signUp(email, password) {
+  try {
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    console.log("signUp result:", { data, error });
+    if (error) {
+      const raw = error.message || "Registration failed.";
+      if (/already registered/i.test(raw)) {
+        const msg = "User already registered.";
+        setRegisterError(msg);
+        showToast(msg, "error");
+        return;
+      }
+      setRegisterError(raw);
+      showToast(raw, "error");
+      return;
+    }
+
+    // Siker: ha van e‑mail megerősítés bekapcsolva, akkor confirmation email ment
+    if (data?.user) {
+      showToast("Registration successful. Check your email.", "success");
+    } else {
+      showToast("Registration successful.", "success");
+    }
+
+    setShowRegisterModal(false);
+    setRegisterEmail("");
+    setRegisterPassword("");
+    setRegisterError("");
+  } catch (e) {
+    const msg = e.message || "Registration failed.";
+    setRegisterError(msg);
+    showToast(msg, "error");
+  }
+}
+
+  function handleRegisterSubmit(e) {
+    e.preventDefault();
+    const email = registerEmail.trim();
+    const pwd = registerPassword;
+    if (!email || !pwd) {
+      setRegisterError("Email and password are required.");
+      showToast("Missing email or password.", "error");
+      return;
+    }
+    if (!isValidEmailFormat(email)) {
+      setRegisterError("Invalid email format.");
+      showToast("Invalid email format.", "error");
+      return;
+    }
+    // No password complexity restrictions enforced.
+    signUp(email, pwd);
+  }
 
   function getAlpha2ForPlace(p) {
     if (!p) return null;
@@ -329,29 +416,22 @@ export default function App() {
     }
   }
 
-  // Auth helpers
-  async function signUp() {
-    try {
-      const { error } = await supabase.auth.signUp({ email: authEmail, password: authPassword });
-      if (error) throw error;
-      alert("Regisztráció: ellenőrizd az emailed a megerősítéshez (ha szükséges).");
-    } catch (e) {
-      alert("Sign up hiba: " + e.message);
-    }
-  }
   async function signIn() {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
       if (error) throw error;
       setAuthPassword("");
+       showToast("Signed in successfully.", "success");
     } catch (e) {
-      alert("Sign in hiba: " + e.message);
+      showToast("Sign in failed." + e.message, "error");
+      //alert("Sign in hiba: " + e.message);
     }
   }
   async function signOut() {
     await supabase.auth.signOut();
     setUser(null);
     setPlaces(loadFromStorage() ?? seedPlaces);
+    showToast("Signed out.", "info");
   }
   // Add new place modal handler
   function handleAddPlace(e) {
@@ -410,8 +490,8 @@ export default function App() {
             <button className="px-3 py-1 text-xs font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors" onClick={signIn}>
               Login
             </button>
-            <button className="px-3 py-1 text-xs font-medium rounded-md bg-red-500 hover:bg-red-700 text-white shadow-sm transition-colors" onClick={signUp}>
-              Register
+            <button className="px-3 py-1 text-xs font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors" onClick={()=>setShowRegisterModal(true)}>
+                Register
             </button>
           </div>
         )}
@@ -580,6 +660,59 @@ export default function App() {
         </div>
         )}
 
+      {/* Register Modal */}
+      {showRegisterModal && (
+        <div className="fixed inset-0 z-[1100] bg-black/40 flex items-start md:items-center justify-center overflow-y-auto p-4">
+          <div className="bg-white rounded-2xl shadow w-full max-w-sm p-6">
+            <h2 className="font-semibold mb-2 text-lg">Create Account</h2>
+            <p className="text-xs text-slate-500 mb-4">
+              Password should be at least 6 characters. Provide a valid email.
+            </p>
+            {registerError && (
+              <div className="mb-3 text-xs text-red-600">{registerError}</div>
+            )}
+            <form className="grid gap-3" onSubmit={handleRegisterSubmit}>
+              <input
+                type="email"
+                className="rounded-lg border p-2 text-sm"
+                placeholder="Email"
+                value={registerEmail}
+                onChange={(e)=>setRegisterEmail(e.target.value)}
+                onInvalid={(e)=>e.target.setCustomValidity("Please enter a valid email address")}
+                onInput={(e)=>e.target.setCustomValidity("")}
+              />
+              <input
+                type="password"
+                className="rounded-lg border p-2 text-sm"
+                placeholder="Password"
+                value={registerPassword}
+                onChange={(e)=>setRegisterPassword(e.target.value)}
+                required
+                onInvalid={(e)=>e.target.setCustomValidity("Password is required")}
+                onInput={(e)=>e.target.setCustomValidity("")}
+              />
+              <div className="flex gap-2 justify-end mt-2">
+                <button
+                  type="button"
+                  className="px-3 py-1 text-sm rounded-lg border hover:bg-slate-100"
+                  onClick={() => {
+                    setShowRegisterModal(false);
+                    setRegisterError("");
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-3 py-1 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  Register
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       {/* Footer */}
       <footer className="text-center text-xs text-gray-500 py-2 bg-white mt-4 shadow">
         If you are not logged in, your data is stored in your browser (localStorage). Source: OpenStreetMap tiles.
