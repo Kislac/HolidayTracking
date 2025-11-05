@@ -390,33 +390,40 @@ export default function App() {
     setDeleteId(null);
   }
   return (
-    <div className="min-h-screen flex flex-col bg-blue-900">
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 bg-red-800 shadow">
-        <h1 className="text-2xl font-bold">Holiday Tracking</h1>
-        <div className="text-sm text-gray-600">
-          {user ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs">{user.email}</span>
-              <button className="text-xs px-2 py-1 rounded-lg border" onClick={signOut}>Kijelentkezés</button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <input className="rounded-xl border p-1 text-xs" placeholder="email" value={authEmail} onChange={(e)=>setAuthEmail(e.target.value)} />
-              <input type="password" className="rounded-xl border p-1 text-xs" placeholder="jelszó" value={authPassword} onChange={(e)=>setAuthPassword(e.target.value)} />
-              <button className="text-xs px-2 py-1 rounded-lg border" onClick={signIn}>Bejelentkezés</button>
-              <button className="text-xs px-2 py-1 rounded-lg border" onClick={signUp}>Regisztráció</button>
-            </div>
-          )}
-        </div>
-      </header>
+    <div className={`min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-sky-50 to-slate-100 text-slate-800 ${showAddModal || editPlace || deleteId ? 'overflow-hidden' : ''}`}>
+
+    {/* Header */}
+    <header className="flex items-center justify-between px-4 py-3 bg-white/90 backdrop-blur border-b border-slate-200 shadow-sm">
+      <h1 className="text-2xl font-bold tracking-tight text-blue-700">Holiday Tracking</h1>
+      <div className="text-sm">
+        {user ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-600">{user.email}</span>
+            <button className="px-3 py-1 text-xs font-medium rounded-lg border border-slate-300 hover:bg-slate-100 transition-colors" onClick={signOut}>
+              Log out
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <input className="rounded-lg border border-slate-300 p-1 text-xs focus:outline-none focus:ring focus:ring-blue-200" placeholder="email" value={authEmail} onChange={(e)=>setAuthEmail(e.target.value)} />
+            <input type="password" className="rounded-lg border border-slate-300 p-1 text-xs focus:outline-none focus:ring focus:ring-blue-200" placeholder="password" value={authPassword} onChange={(e)=>setAuthPassword(e.target.value)} />
+            <button className="px-3 py-1 text-xs font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors" onClick={signIn}>
+              Login
+            </button>
+            <button className="px-3 py-1 text-xs font-medium rounded-md bg-red-500 hover:bg-red-700 text-white shadow-sm transition-colors" onClick={signUp}>
+              Register
+            </button>
+          </div>
+        )}
+      </div>
+    </header>
 
       {/* Main content */}
       <main className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
         {/* Left: Place list */}
         <section>
           <div className="flex items-center justify-between mb-2">
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-slate-600">
               Látogatott országok: <b>{stats.countriesCount}</b> • Helyek: <b>{stats.visitedCount}</b> ✓ / <b>{stats.wishlistCount}</b> kívánság
             </div>
             <button className="px-3 py-1 rounded-xl bg-blue-500 text-white text-xs" onClick={()=>setShowAddModal(true)}>
@@ -499,10 +506,10 @@ export default function App() {
 
       {/* Add Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow p-6 w-full max-w-lg">
+        <div className="fixed inset-0 z-[1000] bg-black/40 flex items-start md:items-center justify-center overflow-y-auto p-4">
+          <div className="bg-white rounded-2xl shadow w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="font-semibold mb-2">Új hely hozzáadása</h2>
-            <form className="grid gap-3" onSubmit={handleAddPlace}>
+              <form className="grid gap-3" onSubmit={handleAddPlace}>
               <input name="name" className="rounded-xl border p-2" placeholder="Hely neve" required />
               <input name="country" className="rounded-xl border p-2" placeholder="Ország (név)" />
               <input name="countryCode" className="rounded-xl border p-2" placeholder="Ország ISO-kód (pl. HU)" />
@@ -520,8 +527,8 @@ export default function App() {
               <input name="tags" className="rounded-xl border p-2" placeholder="Címkék (vesszővel)" />
               <textarea name="notes" className="rounded-xl border p-2" placeholder="Jegyzetek" />
               <div className="flex gap-2">
-                <button type="submit" className="rounded-xl border p-2 bg-blue-500 text-white">Hozzáadás</button>
-                <button type="button" className="rounded-xl border p-2" onClick={()=>setShowAddModal(false)}>Mégse</button>
+                <button type="submit" className="rounded-xl border p-2 bg-blue-500 text-white">Add Place</button>
+                <button type="button" className="rounded-xl border p-2" onClick={()=>setShowAddModal(false)}>Cancell</button>
               </div>
             </form>
           </div>
@@ -529,53 +536,53 @@ export default function App() {
       )}
 
       {/* Edit Modal */}
-      {editPlace && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow p-6 w-full max-w-lg">
-            <h2 className="font-semibold mb-2">Hely módosítása</h2>
-            <form className="grid gap-3" onSubmit={handleEditPlace}>
-              <input name="name" className="rounded-xl border p-2" placeholder="Hely neve" defaultValue={editPlace.name} required />
-              <input name="country" className="rounded-xl border p-2" placeholder="Ország (név)" defaultValue={editPlace.country} />
-              <input name="countryCode" className="rounded-xl border p-2" placeholder="Ország ISO-kód (pl. HU)" defaultValue={editPlace.countryCode} />
-              <input name="city" className="rounded-xl border p-2" placeholder="Város/Régió" defaultValue={editPlace.city} />
-              <div className="flex gap-2">
-                <input name="lat" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Szélesség (lat)" defaultValue={editPlace.lat} />
-                <input name="lng" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Hosszúság (lng)" defaultValue={editPlace.lng} />
-              </div>
-              <select name="status" className="rounded-xl border p-2" defaultValue={editPlace.status}>
-                <option value="visited">Meglátogatott</option>
-                <option value="wishlist">Kívánságlista</option>
-              </select>
-              <input name="dateVisited" type="date" className="rounded-xl border p-2" defaultValue={editPlace.dateVisited} />
-              <input name="rating" type="number" min={0} max={5} className="rounded-xl border p-2" placeholder="Értékelés (0–5)" defaultValue={editPlace.rating} />
-              <input name="tags" className="rounded-xl border p-2" placeholder="Címkék (vesszővel)" defaultValue={editPlace.tags?.join(", ")} />
-              <textarea name="notes" className="rounded-xl border p-2" placeholder="Jegyzetek" defaultValue={editPlace.notes} />
-              <div className="flex gap-2">
-                <button type="submit" className="rounded-xl border p-2 bg-blue-500 text-white">Mentés</button>
-                <button type="button" className="rounded-xl border p-2" onClick={()=>setEditPlace(null)}>Mégse</button>
-              </div>
-            </form>
+        {editPlace && (
+          <div className="fixed inset-0 z-[1000] bg-black/40 flex items-start md:items-center justify-center overflow-y-auto p-4">
+            <div className="bg-white rounded-2xl shadow w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+          <h2 className="font-semibold mb-2">Edit Place</h2>
+          <form className="grid gap-3" onSubmit={handleEditPlace}>
+            <input name="name" className="rounded-xl border p-2" placeholder="Place name" defaultValue={editPlace.name} required />
+            <input name="country" className="rounded-xl border p-2" placeholder="Country (name)" defaultValue={editPlace.country} />
+            <input name="countryCode" className="rounded-xl border p-2" placeholder="Country ISO code (e.g. HU)" defaultValue={editPlace.countryCode} />
+            <input name="city" className="rounded-xl border p-2" placeholder="City/Region" defaultValue={editPlace.city} />
+            <div className="flex gap-2">
+              <input name="lat" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Latitude (lat)" defaultValue={editPlace.lat} />
+              <input name="lng" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Longitude (lng)" defaultValue={editPlace.lng} />
+            </div>
+            <select name="status" className="rounded-xl border p-2" defaultValue={editPlace.status}>
+              <option value="visited">Visited</option>
+              <option value="wishlist">Wishlist</option>
+            </select>
+            <input name="dateVisited" type="date" className="rounded-xl border p-2" defaultValue={editPlace.dateVisited} />
+            <input name="rating" type="number" min={0} max={5} className="rounded-xl border p-2" placeholder="Rating (0–5)" defaultValue={editPlace.rating} />
+            <input name="tags" className="rounded-xl border p-2" placeholder="Tags (comma separated)" defaultValue={editPlace.tags?.join(", ")} />
+            <textarea name="notes" className="rounded-xl border p-2" placeholder="Notes" defaultValue={editPlace.notes} />
+            <div className="flex gap-2">
+              <button type="submit" className="rounded-xl border p-2 bg-blue-500 text-white">Save</button>
+              <button type="button" className="rounded-xl border p-2" onClick={()=>setEditPlace(null)}>Cancel</button>
+            </div>
+          </form>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Delete confirmation */}
-      {deleteId && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow p-6 w-full max-w-sm text-center">
-            <h2 className="font-semibold mb-2">Biztosan törölni szeretnéd?</h2>
-            <div className="mb-4 text-gray-700">Ez a művelet nem visszavonható.</div>
+        {/* Delete confirmation */}
+        {deleteId && (
+        <div className="fixed inset-0 z-[1000] bg-black/40 flex items-start md:items-center justify-center overflow-y-auto p-4">
+          <div className="bg-white rounded-2xl shadow w-full max-w-sm p-6 text-center max-h-[80vh] overflow-y-auto">
+            <h2 className="font-semibold mb-2">Are you sure to to be delete it?</h2>
+            <div className="mb-4 text-gray-700">Thic action cannot be reverted</div>
             <div className="flex gap-2 justify-center">
               <button className="rounded-xl border p-2 bg-red-500 text-white" onClick={handleDeleteConfirmed}>Törlés</button>
               <button className="rounded-xl border p-2" onClick={()=>setDeleteId(null)}>Mégse</button>
             </div>
           </div>
         </div>
-      )}
+        )}
 
       {/* Footer */}
       <footer className="text-center text-xs text-gray-500 py-2 bg-white mt-4 shadow">
-        Adatok a böngészőben (localStorage) tárolva. Export/Import gombokkal viheted át másik gépre. Forrás: OpenStreetMap csempék.
+        If you are not logged in, your data is stored in your browser (localStorage). Source: OpenStreetMap tiles.
       </footer>
     </div>
   );
