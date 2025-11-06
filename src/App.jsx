@@ -613,14 +613,14 @@ export default function App() {
                 Login
               </button>
               <button className="px-3 py-1 text-xs font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors" onClick={()=>setShowRegisterModal(true)}>
-                Registerab
+                Register/Reset
               </button>
             </div>
 
             {/* Mobile: compact buttons open modals */}
             <div className="flex md:hidden items-center gap-2">
               <button className="px-3 py-1 text-xs font-medium rounded-md bg-blue-600 text-white" onClick={()=>setShowLoginModal(true)}>Login</button>
-              <button className="px-3 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white" onClick={()=>setShowRegisterModal(true)}>Registerab</button>
+              <button className="px-3 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white" onClick={()=>setShowRegisterModal(true)}>Register/Reset</button>
             </div>
           </>
         )}
