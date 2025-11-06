@@ -526,10 +526,12 @@ export default function App() {
       return;
     }
     setForgotLoading(true);
-    // használd a Vite base URL-t, ha be van állítva (GitHub Pages esetén pl. "/HolidayTracking/")
-    const base = import.meta.env.BASE_URL || "/";
-    const redirectTo = `${window.location.origin}${base}reset-password`;
-    const { data, error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+
+    // Use an explicit, exact redirect URL that matches your Supabase Redirect URLs entry
+    // Replace the string below if you host under a different path.
+    const resetUrl = "https://kislac.github.io/HolidayTracking/reset-password";
+    const { data, error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: resetUrl });
+
     if (error) {
       console.warn("resetPasswordForEmail error", error);
       setForgotMessage(error.message || "Unable to send reset email.");
