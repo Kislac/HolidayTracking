@@ -183,3 +183,35 @@ Ha szeretnéd, segítek:
 - a pontos SQL-t beilleszteni a Supabase SQL editorba,
 - készítek egy kisméretű GitHub Actions workflow-t a VITE env változókkal,
 - vagy bemutatom, hogyan kezeld a bejelentkezést / session-t React-ben a jelenlegi App.jsx-edhez igazítva. Melyik legyen a következő lépés?
+
+
+
+
+
+
+
+
+
+
+
+
+-- create a case-insensitive exists check for auth.users
+create or replace function public.email_exists(p_email text)
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (
+    select 1
+    from auth.users u
+    where lower(u.email) = lower(p_email)
+  );
+$$;
+
+
+
+
+
+-- Allow client (anon) to call the function (UX friendly, but exposes existence check)
+grant execute on function public.email_exists(text) to anon;

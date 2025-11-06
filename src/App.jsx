@@ -14,6 +14,7 @@ const DefaultIcon = L.icon({ iconUrl, shadowUrl: iconShadow, iconAnchor: [12, 41
 L.Marker.prototype.options.icon = DefaultIcon;
 
 import { createPortal } from "react-dom";
+import ResetPassword from "./ResetPassword";
 
 // ---- Típusok ----
 /** @typedef {"visited"|"wishlist"} PlaceStatus */
@@ -112,6 +113,11 @@ function mapDbRowToPlace(row) {
 
 // ---- Fő alkalmazás ----
 export default function App() {
+  // If the app was opened via the reset-password redirect, render the reset page only
+  if (typeof window !== "undefined" && window.location.pathname === "/reset-password") {
+    return <ResetPassword />;
+  }
+
   const [places, setPlaces] = useState(() => loadFromStorage() ?? seedPlaces);
   const [filterText, setFilterText] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -138,6 +144,12 @@ export default function App() {
 
   //Login modal
   const [showLoginModal, setShowLoginModal] = useState(false);
+
+  // Forgot password state
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState("");
 
  // GitHub commit info
   const [lastCommit, setLastCommit] = useState(null);
@@ -244,17 +256,14 @@ export default function App() {
   // Try to detect existing user by email (client-side). May return null if check not allowed.
   async function checkUserExists(email) {
     try {
-      // query "users" table/view for matching email
-      const { data, error } = await supabase
-        .from("users")
-        .select("id")
-        .eq("email", email)
-        .limit(1);
+      const { data, error } = await supabase.rpc("email_exists", { p_email: email });
       if (error) {
-        console.warn("checkUserExists error:", error.message || error);
-        return null; // can't reliably check from client
+        console.warn("checkUserExists rpc error:", error.message || error);
+        return null; // can't reliably check
       }
-      return Array.isArray(data) ? data.length > 0 : Boolean(data && data.id);
+      // RPC returns boolean true/false
+      console.log("checkUserExists rpc:", { email, exists: data });
+      return Boolean(data);
     } catch (e) {
       console.warn("checkUserExists exception:", e);
       return null;
@@ -509,6 +518,35 @@ export default function App() {
     setPlaces(loadFromStorage() ?? seedPlaces);
     showToast("Signed out.", "info");
   }
+
+  async function sendResetEmail(email) {
+    try {
+      if (!email || !isValidEmailFormat(email)) {
+        setForgotMessage("Please provide a valid email.");
+        return;
+      }
+      setForgotLoading(true);
+      // redirectTo can point to a page in your app that completes the reset flow, or omit to use Supabase's default page
+      const redirectTo = `${window.location.origin}/reset-password`;
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) {
+        console.warn("resetPasswordForEmail error", error);
+        setForgotMessage(error.message || "Unable to send reset email.");
+        showToast(error.message || "Unable to send reset email.", "error");
+        return;
+      }
+      setForgotMessage("Password reset email sent. Check your inbox (or spam).");
+      showToast("Password reset email sent. Check your inbox.", "success");
+    } catch (e) {
+      console.warn("sendResetEmail exception", e);
+      setForgotMessage("Unable to send reset email.");
+      showToast("Unable to send reset email.", "error");
+    } finally {
+      setForgotLoading(false);
+    }
+  }
+
+
   // Add new place modal handler
   function handleAddPlace(e) {
     e.preventDefault();
@@ -569,14 +607,14 @@ export default function App() {
                 Login
               </button>
               <button className="px-3 py-1 text-xs font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors" onClick={()=>setShowRegisterModal(true)}>
-                Register
+                Registera
               </button>
             </div>
 
             {/* Mobile: compact buttons open modals */}
             <div className="flex md:hidden items-center gap-2">
               <button className="px-3 py-1 text-xs font-medium rounded-md bg-blue-600 text-white" onClick={()=>setShowLoginModal(true)}>Login</button>
-              <button className="px-3 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white" onClick={()=>setShowRegisterModal(true)}>Register</button>
+              <button className="px-3 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white" onClick={()=>setShowRegisterModal(true)}>Registera</button>
             </div>
           </>
         )}
@@ -826,6 +864,11 @@ export default function App() {
                 onInvalid={(e)=>e.target.setCustomValidity("Password is required")}
                 onInput={(e)=>e.target.setCustomValidity("")}
               />
+              <div className="mt-2 text-right">
+                <button type="button" className="text-xs text-blue-600 hover:underline" onClick={() => { setShowLoginModal(false); setShowForgotModal(true); setForgotEmail(authEmail || ""); }}>
+                  Forgot password?
+                </button>
+              </div>
               <div className="flex gap-2 justify-end mt-2">
                 <button
                   type="button"
@@ -843,6 +886,35 @@ export default function App() {
                   disabled={registerLoading}
                 >
                   {registerLoading ? "Registering…" : "Register"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+        
+      )}
+      {/* Forgot password Modal */}
+      {showForgotModal && (
+        <div className="fixed inset-0 z-[1100] bg-black/40 flex items-start md:items-center justify-center overflow-y-auto p-4">
+          <div className="bg-white rounded-2xl shadow w-full max-w-sm p-6">
+            <h2 className="font-semibold mb-2 text-lg">Reset password</h2>
+            <p className="text-xs text-slate-500 mb-4">Enter your email and we'll send a password reset link.</p>
+            {forgotMessage && <div className="mb-3 text-xs text-gray-700">{forgotMessage}</div>}
+            <form className="grid gap-3" onSubmit={(e)=>{ e.preventDefault(); sendResetEmail(forgotEmail); }}>
+              <input
+                type="email"
+                className="rounded-lg border p-2 text-sm"
+                placeholder="Email"
+                value={forgotEmail}
+                onChange={(e)=>setForgotEmail(e.target.value)}
+                required
+              />
+              <div className="flex gap-2 justify-end mt-2">
+                <button type="button" className="px-3 py-1 text-sm rounded-lg border hover:bg-slate-100" onClick={() => { setShowForgotModal(false); setForgotMessage(""); }}>
+                  Cancel
+                </button>
+                <button type="submit" className="px-3 py-1 text-sm rounded-lg bg-amber-600 hover:bg-amber-700 text-white" disabled={forgotLoading}>
+                  {forgotLoading ? "Sending…" : "Send reset email"}
                 </button>
               </div>
             </form>
