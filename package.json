@@ -9,7 +9,7 @@
     "build": "vite build --base /HolidayTracking/",
     "lint": "eslint .",
     "preview": "vite preview",
-    "predeploy": "npm run build && node scripts/copy-index-to-404.js",
+    "predeploy": "npm run build && node scripts/copy-index-to-404.cjs",
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
