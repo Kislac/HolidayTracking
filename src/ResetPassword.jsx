@@ -26,18 +26,18 @@ export default function ResetPassword() {
           const { error } = await supabase.auth.setSession({ access_token, refresh_token });
           if (error) {
             console.warn("setSession error:", error);
-            setMessage("A reset link érvénytelen vagy lejárt. Kérj új jelszó-helyreállítást.");
+            setMessage("The reset link is invalid or has expired.");
           } else {
-            setMessage("Most megadhatsz egy új jelszót.");
+            setMessage("Provide a new password below.");
           }
         } catch (e) {
           console.warn("setSession exception:", e);
-          setMessage("Hiba történt a token feldolgozásakor.");
+          setMessage("Error occurred while processing the reset link.");
         } finally {
           setLoading(false);
         }
       } else {
-        setMessage("Kattints a kapott jelszó-visszaállító linkre. Ha nincs link, kérj újat a bejelentkezésnél.");
+        setMessage("Click to the reset link in your email to set a new password.");
       }
       setReady(true);
     })();
@@ -46,7 +46,7 @@ export default function ResetPassword() {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!password || password.length < 6) {
-      setMessage("A jelszónak legalább 6 karakter hosszúnak kell lennie.");
+      setMessage("Password must be at least 6 characters long.");
       return;
     }
     setLoading(true);
@@ -54,14 +54,14 @@ export default function ResetPassword() {
       const { data, error } = await supabase.auth.updateUser({ password });
       if (error) {
         console.warn("updateUser error:", error);
-        setMessage(error.message || "Jelszó frissítése sikertelen.");
+        setMessage(error.message || "Password update failed.");
       } else {
-        setMessage("Jelszó sikeresen frissítve. Átirányítás a kezdőoldalra...");
+        setMessage("Password updated successfully! Redirecting to home...");
         setTimeout(() => (window.location.href = appRoot), 1500);
       }
     } catch (e) {
       console.warn("updateUser exception:", e);
-      setMessage("Hiba történt a jelszó frissítése közben.");
+      setMessage("Error occurred while updating the password.");
     } finally {
       setLoading(false);
     }
@@ -80,7 +80,7 @@ export default function ResetPassword() {
             <input
               type="password"
               className="rounded-lg border p-2 text-sm"
-              placeholder="Új jelszó"
+              placeholder="New password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -90,7 +90,7 @@ export default function ResetPassword() {
                 Mégse
               </button>
               <button type="submit" className="px-3 py-1 rounded-lg bg-blue-600 text-white" disabled={loading}>
-                {loading ? "Mentés..." : "Új jelszó mentése"}
+                {loading ? "Saving..." : "Save new password"}
               </button>
             </div>
           </form>

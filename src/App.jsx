@@ -15,6 +15,8 @@ L.Marker.prototype.options.icon = DefaultIcon;
 
 import { createPortal } from "react-dom";
 import ResetPassword from "./ResetPassword";
+import pkg from "../package.json";
+import PlaceSearch from "./PlaceSearch";
 
 // ---- Típusok ----
 /** @typedef {"visited"|"wishlist"} PlaceStatus */
@@ -113,6 +115,15 @@ function mapDbRowToPlace(row) {
 
 // ---- Fő alkalmazás ----
 export default function App() {
+  // Prefill for Add Place modal (from autocomplete)
+  const [prefillPlace, setPrefillPlace] = useState(null);
+  function handlePlaceSelect(p) {
+    // p: { name, country, countryCode, city, lat, lng }
+    setPrefillPlace(p);
+    setNewCoords([p.lat || 0, p.lng || 0]);
+    setShowAddModal(true);
+  }
+
   // If the app was opened via the reset-password redirect, render the reset page only
   if (typeof window !== "undefined" && window.location.pathname.endsWith("/reset-password")) {
   return <ResetPassword />;
@@ -121,6 +132,7 @@ export default function App() {
   const [places, setPlaces] = useState(() => loadFromStorage() ?? seedPlaces);
   const [filterText, setFilterText] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [filterTag, setFilterTag] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
   const [newCoords, setNewCoords] = useState([47.4979, 19.0402]); // Budapest default
 
@@ -420,9 +432,17 @@ export default function App() {
       const t = (p.name + " " + p.country + " " + p.city + " " + (p.tags||[]).join(" ")).toLowerCase();
       const textOk = t.includes(filterText.toLowerCase());
       const statusOk = filterStatus === "all" ? true : p.status === filterStatus;
-      return textOk && statusOk;
+      const tagOk = filterTag === "all" ? true : (Array.isArray(p.tags) && p.tags.includes(filterTag));
+      return textOk && statusOk && tagOk;
     });
-  }, [places, filterText, filterStatus]);
+  }, [places, filterText, filterStatus, filterTag]);
+
+  // derive available tags from places
+  const availableTags = useMemo(() => {
+    const s = new Set();
+    places.forEach(p => Array.isArray(p.tags) && p.tags.forEach(t => t && s.add(t)));
+    return Array.from(s).sort((a,b)=>a.localeCompare(b));
+  }, [places]);
 
   const stats = useMemo(() => {
     const visited = places.filter(p => p.status === "visited");
@@ -438,24 +458,28 @@ export default function App() {
     return { visitedCount: visited.length, wishlistCount: wishlist.length, countriesCount: countries.size };
   }, [places, countryNameToAlpha2]);
 
+  // countries visited/wishlist sets for map coloring
   const visitedCountrySetIso2 = useMemo(() => {
     const s = new Set();
-    places.forEach(p => {
-      if (p.status === "visited") {
-        const c = getAlpha2ForPlace(p);
-        if (c) s.add(c);
-      }
-    });
+    places.forEach(p => { if (p.status === "visited") { const c = getAlpha2ForPlace(p); if (c) s.add(c); } });
     return s;
   }, [places, countryNameToAlpha2]);
+
+  const wishlistCountrySetIso2 = useMemo(() => {
+    const s = new Set();
+    places.forEach(p => { if (p.status === "wishlist") { const c = getAlpha2ForPlace(p); if (c) s.add(c); } });
+    return s;
+  }, [places, countryNameToAlpha2]);
+
 
   function countryStyle(feature) {
     const props = feature.properties || {};
     const alpha2 = String(props["ISO3166-1-Alpha-2"] || props["ISO_A2"] || props["iso_a2"] || props["ISO2"] || "").toUpperCase();
     const visited = alpha2 && visitedCountrySetIso2.has(alpha2);
+    const wishlisted = alpha2 && wishlistCountrySetIso2.has(alpha2);
     return {
-      fillColor: visited ? "#f87171" : "#ffffff",
-      fillOpacity: visited ? 0.6 : 0.05,
+      fillColor: visited ? "#f87171" : wishlisted ? "#60a5fa" : "#ffffff", // visited red, wishlist blue
+      fillOpacity: visited ? 0.6 : wishlisted ? 0.35 : 0.05,
       color: "#999",
       weight: 1,
     };
@@ -490,6 +514,8 @@ export default function App() {
     }
 
     formEl.reset();
+    // clear prefill after submit so next open is clean
+    setPrefillPlace(null);
   }
 
 
@@ -652,9 +678,12 @@ export default function App() {
             <div className="text-sm text-slate-600">
               Látogatott országok: <b>{stats.countriesCount}</b> • Helyek: <b>{stats.visitedCount}</b> ✓ / <b>{stats.wishlistCount}</b> kívánság
             </div>
-            <button className="px-3 py-1 rounded-xl bg-blue-500 text-white text-xs" onClick={()=>setShowAddModal(true)}>
-              Add new place
-            </button>
+            <div className="flex items-center gap-2">
+              <PlaceSearch onSelect={handlePlaceSelect} />
+              <button className="px-3 py-1 rounded-xl bg-blue-500 text-white text-xs" onClick={()=>{ setPrefillPlace(null); setShowAddModal(true); }}>
+                Add new place
+              </button>
+            </div>
           </div>
           <div className="flex gap-2 mb-2">
             <input
@@ -667,6 +696,10 @@ export default function App() {
               <option value="all">Mind</option>
               <option value="visited">Meglátogatott</option>
               <option value="wishlist">Kívánságlista</option>
+            </select>
+            <select className="rounded-xl border p-2" value={filterTag} onChange={(e)=>setFilterTag(e.target.value)}>
+              <option value="all">All tags</option>
+              {availableTags.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div className="bg-white rounded-2xl shadow p-2 max-h-[60vh] overflow-auto">
@@ -682,6 +715,10 @@ export default function App() {
                       {p.name}
                     </div>
                     <div className="text-xs text-gray-500">{p.city || ""}{p.city && p.country ? ", " : ""}{p.country || ""}</div>
+                    <div className="text-xs text-slate-500 mt-1 flex items-center gap-3">
+                      <span>{p.dateVisited ? `Date: ${p.dateVisited}` : "No date"}</span>
+                      <span>Rating: {p.rating ?? 0} / 5</span>
+                    </div>
                   </button>
                   <button className="text-xs px-2 py-1 rounded-lg border" onClick={()=>setEditPlace(p)}>Módosítás</button>
                   <button className="text-xs px-2 py-1 rounded-lg border text-red-600" onClick={()=>confirmDelete(p.id)}>Törlés</button>
@@ -769,27 +806,31 @@ export default function App() {
           <div className="bg-white rounded-2xl shadow w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="font-semibold mb-2">Új hely hozzáadása</h2>
               <form className="grid gap-3" onSubmit={handleAddPlace}>
-              <input name="name" className="rounded-xl border p-2" placeholder="Hely neve" required />
-              <input name="country" className="rounded-xl border p-2" placeholder="Ország (név)" />
-              <input name="countryCode" className="rounded-xl border p-2" placeholder="Ország ISO-kód (pl. HU)" />
-              <input name="city" className="rounded-xl border p-2" placeholder="Város/Régió" />
-              <div className="flex gap-2">
-                <input name="lat" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Szélesség (lat)" defaultValue={newCoords?.[0] ?? ''} />
-                <input name="lng" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Hosszúság (lng)" defaultValue={newCoords?.[1] ?? ''} />
-              </div>
+              <input name="name" className="rounded-xl border p-2" placeholder="Hely neve" required defaultValue={prefillPlace?.name || ""} />
+              <input name="country" className="rounded-xl border p-2" placeholder="Ország (név)" defaultValue={prefillPlace?.country || ""} />
+              <input name="countryCode" className="rounded-xl border p-2" placeholder="Ország ISO-kód (pl. HU)" defaultValue={prefillPlace?.countryCode || ""} />
+              <input name="city" className="rounded-xl border p-2" placeholder="Város/Régió" defaultValue={prefillPlace?.city || ""} />
+               <div className="flex gap-2">
+                <input name="lat" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Szélesség (lat)" defaultValue={prefillPlace?.lat ?? newCoords?.[0] ?? ''} />
+                <input name="lng" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Hosszúság (lng)" defaultValue={prefillPlace?.lng ?? newCoords?.[1] ?? ''} />
+               </div>
               <select name="status" className="rounded-xl border p-2">
                 <option value="visited">Meglátogatott</option>
                 <option value="wishlist">Kívánságlista</option>
               </select>
               <input name="dateVisited" type="date" className="rounded-xl border p-2" />
               <input name="rating" type="number" min={0} max={5} className="rounded-xl border p-2" placeholder="Értékelés (0–5)" />
-              <input name="tags" className="rounded-xl border p-2" placeholder="Címkék (vesszővel)" />
+              <input name="tags" list="tag-suggestions" className="rounded-xl border p-2" placeholder="Címkék (vesszővel)" />
               <textarea name="notes" className="rounded-xl border p-2" placeholder="Jegyzetek" />
               <div className="flex gap-2">
                 <button type="submit" className="rounded-xl border p-2 bg-blue-500 text-white">Add Place</button>
                 <button type="button" className="rounded-xl border p-2" onClick={()=>setShowAddModal(false)}>Cancell</button>
               </div>
             </form>
+            {/* datalist for tag suggestions */}
+            <datalist id="tag-suggestions">
+              {availableTags.map(t => <option key={t} value={t} />)}
+            </datalist>
           </div>
         </div>
       )}
@@ -814,14 +855,14 @@ export default function App() {
             </select>
             <input name="dateVisited" type="date" className="rounded-xl border p-2" defaultValue={editPlace.dateVisited} />
             <input name="rating" type="number" min={0} max={5} className="rounded-xl border p-2" placeholder="Rating (0–5)" defaultValue={editPlace.rating} />
-            <input name="tags" className="rounded-xl border p-2" placeholder="Tags (comma separated)" defaultValue={editPlace.tags?.join(", ")} />
+            <input name="tags" list="tag-suggestions" className="rounded-xl border p-2" placeholder="Tags (comma separated)" defaultValue={editPlace.tags?.join(", ")} />
             <textarea name="notes" className="rounded-xl border p-2" placeholder="Notes" defaultValue={editPlace.notes} />
             <div className="flex gap-2">
               <button type="submit" className="rounded-xl border p-2 bg-blue-500 text-white">Save</button>
               <button type="button" className="rounded-xl border p-2" onClick={()=>setEditPlace(null)}>Cancel</button>
             </div>
           </form>
-            </div>
+          </div>
           </div>
         )}
 
@@ -946,6 +987,7 @@ export default function App() {
                 Last Commit: {lastCommit.date ? String(new Date(lastCommit.date).toISOString().slice(0,10)).replace(/-/g, ".") : lastCommit.sha.slice(0,7)}
               </a>
             )}
+            <div className="text-xs text-gray-500">Version: {pkg.version}</div>
           </div>
         </div>
       </footer>
