@@ -114,8 +114,8 @@ function mapDbRowToPlace(row) {
 // ---- Fő alkalmazás ----
 export default function App() {
   // If the app was opened via the reset-password redirect, render the reset page only
-  if (typeof window !== "undefined" && window.location.pathname === "/reset-password") {
-    return <ResetPassword />;
+  if (typeof window !== "undefined" && window.location.pathname.endsWith("/reset-password")) {
+  return <ResetPassword />;
   }
 
   const [places, setPlaces] = useState(() => loadFromStorage() ?? seedPlaces);
@@ -520,31 +520,32 @@ export default function App() {
   }
 
   async function sendResetEmail(email) {
-    try {
-      if (!email || !isValidEmailFormat(email)) {
-        setForgotMessage("Please provide a valid email.");
-        return;
-      }
-      setForgotLoading(true);
-      // redirectTo can point to a page in your app that completes the reset flow, or omit to use Supabase's default page
-      const redirectTo = `${window.location.origin}/reset-password`;
-      const { data, error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
-      if (error) {
-        console.warn("resetPasswordForEmail error", error);
-        setForgotMessage(error.message || "Unable to send reset email.");
-        showToast(error.message || "Unable to send reset email.", "error");
-        return;
-      }
-      setForgotMessage("Password reset email sent. Check your inbox (or spam).");
-      showToast("Password reset email sent. Check your inbox.", "success");
-    } catch (e) {
-      console.warn("sendResetEmail exception", e);
-      setForgotMessage("Unable to send reset email.");
-      showToast("Unable to send reset email.", "error");
-    } finally {
-      setForgotLoading(false);
+  try {
+    if (!email || !isValidEmailFormat(email)) {
+      setForgotMessage("Please provide a valid email.");
+      return;
     }
+    setForgotLoading(true);
+    // használd a Vite base URL-t, ha be van állítva (GitHub Pages esetén pl. "/HolidayTracking/")
+    const base = import.meta.env.BASE_URL || "/";
+    const redirectTo = `${window.location.origin}${base}reset-password`;
+    const { data, error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) {
+      console.warn("resetPasswordForEmail error", error);
+      setForgotMessage(error.message || "Unable to send reset email.");
+      showToast(error.message || "Unable to send reset email.", "error");
+      return;
+    }
+    setForgotMessage("Password reset email sent. Check your inbox (or spam).");
+    showToast("Password reset email sent. Check your inbox.", "success");
+  } catch (e) {
+    console.warn("sendResetEmail exception", e);
+    setForgotMessage("Unable to send reset email.");
+    showToast("Unable to send reset email.", "error");
+  } finally {
+    setForgotLoading(false);
   }
+}
 
 
   // Add new place modal handler
@@ -937,7 +938,7 @@ export default function App() {
             </a>
             {lastCommit && (
               <a href={lastCommit.url} target="_blank" rel="noreferrer" className="text-xs text-gray-500">
-                Last Commit: {lastCommit.date ? new Date(lastCommit.date).toLocaleDateString() : lastCommit.sha.slice(0,7)}
+                Last Commit: {lastCommit.date ? String(new Date(lastCommit.date).toISOString().slice(0,10)).replace(/-/g, ".") : lastCommit.sha.slice(0,7)}
               </a>
             )}
           </div>
