@@ -213,12 +213,16 @@ export default function App() {
   }
 
   async function signUp(email, password) {
+  const resetUrl = "https://kislac.github.io/HolidayTracking/reset-password";
+   try {
     if (registerLoading) return;
     setRegisterLoading(true);
-     try {
-       const { data, error } = await supabase.auth.signUp({ email, password });
-       console.log("signUp result:", { data, error });
-      if (error) {
+    // pass exact redirect so confirmation email points to your SPA path
+    const { data, error } = await supabase.auth.signUp(
+      { email, password, options: { emailRedirectTo: resetUrl } }
+    );
+     console.log("signUp result:", { data, error });
+     if (error) {
         const raw = error.message || "Registration failed.";
         setRegisterError(raw);
         showToast(raw, "error");
@@ -610,14 +614,14 @@ export default function App() {
                 Login
               </button>
               <button className="px-3 py-1 text-xs font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors" onClick={()=>setShowRegisterModal(true)}>
-                Registera
+                Registerab
               </button>
             </div>
 
             {/* Mobile: compact buttons open modals */}
             <div className="flex md:hidden items-center gap-2">
               <button className="px-3 py-1 text-xs font-medium rounded-md bg-blue-600 text-white" onClick={()=>setShowLoginModal(true)}>Login</button>
-              <button className="px-3 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white" onClick={()=>setShowRegisterModal(true)}>Registera</button>
+              <button className="px-3 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white" onClick={()=>setShowRegisterModal(true)}>Registerab</button>
             </div>
           </>
         )}
