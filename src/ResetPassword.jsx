@@ -7,6 +7,10 @@ export default function ResetPassword() {
   const [message, setMessage] = useState("");
   const [password, setPassword] = useState("");
 
+  const appRoot = (typeof window !== "undefined")
+    ? window.location.origin.replace(/\/$/, "") + (import.meta.env.BASE_URL || "/")
+    : "/";
+
   // Parse tokens from query or hash and set session so updateUser works
   useEffect(() => {
     const search = new URLSearchParams(window.location.search);
@@ -53,7 +57,7 @@ export default function ResetPassword() {
         setMessage(error.message || "Jelszó frissítése sikertelen.");
       } else {
         setMessage("Jelszó sikeresen frissítve. Átirányítás a kezdőoldalra...");
-        setTimeout(() => (window.location.href = "/"), 1500);
+        setTimeout(() => (window.location.href = appRoot), 1500);
       }
     } catch (e) {
       console.warn("updateUser exception:", e);
@@ -82,7 +86,7 @@ export default function ResetPassword() {
               required
             />
             <div className="flex justify-end gap-2">
-              <button type="button" className="px-3 py-1 rounded-lg border" onClick={() => (window.location.href = "/")}>
+              <button type="button" className="px-3 py-1 rounded-lg border" onClick={() => (window.location.href = appRoot)}>
                 Mégse
               </button>
               <button type="submit" className="px-3 py-1 rounded-lg bg-blue-600 text-white" disabled={loading}>

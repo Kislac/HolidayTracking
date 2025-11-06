@@ -213,49 +213,48 @@ export default function App() {
   }
 
   async function signUp(email, password) {
-  const resetUrl = "https://kislac.github.io/HolidayTracking/reset-password";
-   try {
+  // email confirmation should redirect to the app root (not the reset page)
+  const origin = typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
+  const basePath = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+  const confirmRedirect = `${origin}${basePath || ""}/`; // e.g. https://kislac.github.io/HolidayTracking/
+
+  try {
     if (registerLoading) return;
     setRegisterLoading(true);
-    // pass exact redirect so confirmation email points to your SPA path
     const { data, error } = await supabase.auth.signUp(
-      { email, password, options: { emailRedirectTo: resetUrl } }
+      { email, password, options: { emailRedirectTo: confirmRedirect } }
     );
-     console.log("signUp result:", { data, error });
-     if (error) {
-        const raw = error.message || "Registration failed.";
-        setRegisterError(raw);
-        showToast(raw, "error");
-        return;
-      }
-
-      // Ha van user, de nincs session => megerősítő email lett kiküldve (vagy user már létezett és újraküldve)
-      if (data?.user && !data?.session) {
-        setRegisterError("");
-        if (data.user.confirmation_sent_at) {
-          showToast("Registration email sent. Check your inbox (or spam).", "success");
-        } else {
-          showToast("Registration successful. Check your email.", "success");
-        }
-      } else if (data?.session) {
-        showToast("Registered and signed in.", "success");
-      } else {
-        showToast("Registration successful.", "success");
-      }
-
-      // reset modal/state
-      setShowRegisterModal(false);
-      setRegisterEmail("");
-      setRegisterPassword("");
-      setRegisterError("");
-    } catch (e) {
-      const msg = e.message || "Registration failed.";
-      setRegisterError(msg);
-      showToast(msg, "error");
-    } finally {
-      setRegisterLoading(false);
+    console.log("signUp result:", { data, error });
+    if (error) {
+      const raw = error.message || "Registration failed.";
+      setRegisterError(raw);
+      showToast(raw, "error");
+      return;
     }
+    if (data?.user && !data?.session) {
+      setRegisterError("");
+      if (data.user.confirmation_sent_at) {
+        showToast("Registration email sent. Check your inbox (or spam).", "success");
+      } else {
+        showToast("Registration successful. Check your email.", "success");
+      }
+    } else if (data?.session) {
+      showToast("Registered and signed in.", "success");
+    } else {
+      showToast("Registration successful.", "success");
+    }
+    setShowRegisterModal(false);
+    setRegisterEmail("");
+    setRegisterPassword("");
+    setRegisterError("");
+  } catch (e) {
+    const msg = e.message || "Registration failed.";
+    setRegisterError(msg);
+    showToast(msg, "error");
+  } finally {
+    setRegisterLoading(false);
   }
+}
 
   // Try to detect existing user by email (client-side). May return null if check not allowed.
   async function checkUserExists(email) {
@@ -531,11 +530,11 @@ export default function App() {
     }
     setForgotLoading(true);
 
-    // Use an explicit, exact redirect URL that matches your Supabase Redirect URLs entry
-    // Replace the string below if you host under a different path.
-    const resetUrl = "https://kislac.github.io/HolidayTracking/reset-password";
-    const { data, error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: resetUrl });
+    const origin = window.location.origin.replace(/\/$/, "");
+    const basePath = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+    const redirectTo = `${origin}${basePath || ""}/reset-password`; // e.g. https://kislac.github.io/HolidayTracking/reset-password
 
+    const { data, error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) {
       console.warn("resetPasswordForEmail error", error);
       setForgotMessage(error.message || "Unable to send reset email.");
