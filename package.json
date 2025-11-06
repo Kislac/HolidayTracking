@@ -6,10 +6,10 @@
   "homepage": "https://github.com/Kislac/HolidayTracking",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build --base /HolidayTracking/",
     "lint": "eslint .",
     "preview": "vite preview",
-    "predeploy": "npm run build",
+    "predeploy": "npm run build && node scripts/copy-index-to-404.js",
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
