@@ -710,13 +710,21 @@ export default function App() {
               {filtered.map(p => (
                 <li key={p.id} className="p-2 hover:bg-gray-50 rounded-xl flex items-center gap-2">
                   <button className="text-left flex-1" onClick={()=>setSelectedId(p.id)}>
-                    <div className="font-semibold flex items-center gap-2">
-                      <span className={`inline-block w-2 h-2 rounded-full ${p.status==="visited"?"bg-green-500":"bg-blue-500"}`}></span>
-                      {p.name}
+                    <div className="font-semibold flex items-center justify-between">
+                      <div className="text-left truncate flex items-center flex-1 min-w-0">
+                        <span className={`inline-block w-2 h-2 rounded-full ${p.status==="visited"?"bg-green-500":"bg-blue-500"} mr-3`} />
+                        <span className="truncate">{p.name}</span>
+                      </div>
+                      <div className="ml-4 text-right text-xs text-gray-400">
+                        {p.dateVisited ? `${p.dateVisited}` : "No date"}
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500">{p.city || ""}{p.city && p.country ? ", " : ""}{p.country || ""}</div>
+                    <div className="text-xs text-gray-500 flex justify-between items-center">
+                      <div className="text-left truncate">
+                        {p.city || ""}{p.city && p.country ? ", " : ""}{p.country || ""}
+                      </div>
+                    </div>
                     <div className="text-xs text-slate-500 mt-1 flex items-center gap-3">
-                      <span>{p.dateVisited ? `Date: ${p.dateVisited}` : "No date"}</span>
                       <span>Rating: {p.rating ?? 0} / 5</span>
                     </div>
                   </button>

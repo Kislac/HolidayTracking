@@ -1,7 +1,7 @@
 {
   "name": "holiday-tracker",
   "private": true,
-  "version": "V1.0.1",
+  "version": "V1.0.2",
   "type": "module",
   "homepage": "https://github.com/Kislac/HolidayTracking",
   "scripts": {
