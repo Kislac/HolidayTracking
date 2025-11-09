@@ -153,6 +153,25 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editPlace, setEditPlace] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
+  // About modal
+  const [showAbout, setShowAbout] = useState(false);
+
+  // Sorting
+  const [sortBy, setSortBy] = useState("date"); // "date" | "name" | "city" | "rating"
+  const [sortDir, setSortDir] = useState("desc"); // "desc" (default) or "asc"
+
+ // Global expand/collapse (one button in the search row). Hidden/disabled on small screens (compact mobile view).
+ const [showDetailsAll, setShowDetailsAll] = useState(false);
+ const [isWide, setIsWide] = useState(typeof window !== "undefined" ? window.innerWidth >= 768 : true);
+ useEffect(() => {
+   function onResize() { setIsWide(window.innerWidth >= 768); }
+   window.addEventListener("resize", onResize);
+   // initialize showDetailsAll based on width
+   setShowDetailsAll(window.innerWidth >= 768);
+   return () => window.removeEventListener("resize", onResize);
+ }, []);
+
+
 
   //Login modal
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -428,14 +447,43 @@ export default function App() {
   const selected = useMemo(() => places.find(p => p.id === selectedId) || null, [places, selectedId]);
 
   const filtered = useMemo(() => {
-    return places.filter(p => {
+    const base = places.filter(p => {
       const t = (p.name + " " + p.country + " " + p.city + " " + (p.tags||[]).join(" ")).toLowerCase();
       const textOk = t.includes(filterText.toLowerCase());
       const statusOk = filterStatus === "all" ? true : p.status === filterStatus;
       const tagOk = filterTag === "all" ? true : (Array.isArray(p.tags) && p.tags.includes(filterTag));
       return textOk && statusOk && tagOk;
     });
-  }, [places, filterText, filterStatus, filterTag]);
+
+    // sort
+    const dir = sortDir === "asc" ? 1 : -1;
+    return base.slice().sort((a,b) => {
+      if (sortBy === "date") {
+        const ra = a.dateVisited ? Date.parse(a.dateVisited) : null;
+        const rb = b.dateVisited ? Date.parse(b.dateVisited) : null;
+        const ta = ra ?? (sortDir === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+        const tb = rb ?? (sortDir === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+        if (ta !== tb) return (ta - tb) * dir;
+        return (a.name || "").localeCompare(b.name || "");
+      }
+      if (sortBy === "name") {
+        const cmp = (a.name || "").localeCompare(b.name || "");
+        return cmp ? cmp * dir : ((a.dateVisited ? Date.parse(a.dateVisited) : 0) - (b.dateVisited ? Date.parse(b.dateVisited) : 0));
+      }
+      if (sortBy === "city") {
+        const cmp = (a.city || "").localeCompare(b.city || "");
+        return cmp ? cmp * dir : ((a.name || "").localeCompare(b.name || "")) * dir;
+      }
+      if (sortBy === "rating") {
+        const ra = Number(a.rating || 0);
+        const rb = Number(b.rating || 0);
+        if (ra !== rb) return (ra - rb) * dir;
+        return (a.name || "").localeCompare(b.name || "");
+      }
+      return 0;
+    });
+  }, [places, filterText, filterStatus, filterTag, sortBy, sortDir]);
+ 
 
   // derive available tags from places
   const availableTags = useMemo(() => {
@@ -620,7 +668,16 @@ export default function App() {
 
     {/* Header */}
     <header className="flex items-center justify-between px-4 py-3 bg-white/90 backdrop-blur border-b border-slate-200 shadow-sm">
-      <h1 className="text-2xl font-bold tracking-tight text-blue-700">Holiday Tracking</h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-2xl font-bold tracking-tight text-blue-700">Holiday Tracking</h1>
+        <button
+          className="px-2 py-1 text-xs rounded-md bg-sky-100 text-sky-700 hover:bg-sky-200"
+          onClick={() => setShowAbout(true)}
+          aria-label="About"
+        >
+          About
+        </button>
+      </div>
       <div className="text-sm">
         {user ? (
           <div className="flex items-center gap-2">
@@ -676,7 +733,7 @@ export default function App() {
         <section>
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm text-slate-600">
-              Látogatott országok: <b>{stats.countriesCount}</b> • Helyek: <b>{stats.visitedCount}</b> ✓ / <b>{stats.wishlistCount}</b> kívánság
+              Visited coutries: <b>{stats.countriesCount}</b> • Places: <b>{stats.visitedCount}</b> ✓ / <b>{stats.wishlistCount}</b> wish
             </div>
             <div className="flex items-center gap-2">
               <PlaceSearch onSelect={handlePlaceSelect} />
@@ -688,50 +745,108 @@ export default function App() {
           <div className="flex gap-2 mb-2">
             <input
               className="w-full rounded-xl border p-2"
-              placeholder="Keresés (név, ország, város, címke)"
+              placeholder="Search (name, country, city, tags...)"
               value={filterText}
               onChange={(e)=>setFilterText(e.target.value)}
             />
             <select className="rounded-xl border p-2" value={filterStatus} onChange={(e)=>setFilterStatus(e.target.value)}>
-              <option value="all">Mind</option>
-              <option value="visited">Meglátogatott</option>
-              <option value="wishlist">Kívánságlista</option>
+              <option value="all">All</option>
+              <option value="visited">Visited</option>
+              <option value="wishlist">Wishlist</option>
             </select>
             <select className="rounded-xl border p-2" value={filterTag} onChange={(e)=>setFilterTag(e.target.value)}>
               <option value="all">All tags</option>
               {availableTags.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
+           {/* Sort controls */}
+            <select className="rounded-xl border p-2" value={sortBy} onChange={(e)=>setSortBy(e.target.value)}>
+              <option value="date">Date</option>
+              <option value="name">Place</option>
+              <option value="city">City</option>
+              <option value="rating">Rating</option>
+            </select>
+          {/* Global expand/collapse: icon-only, always visible (compact mobile kept collapsed by default) */}
+          <button
+            className="rounded-xl border p-2 text-xs w-9 h-9 flex items-center justify-center"
+            title={showDetailsAll ? "Collapse list" : "Expand list"}
+            aria-pressed={showDetailsAll}
+            onClick={() => setShowDetailsAll(s => !s)}
+          >
+            {showDetailsAll ? "▾" : "▸"}
+          </button>
+            <button
+              className="rounded-xl border p-2 px-3"
+              title="Toggle sort direction"
+              onClick={()=>setSortDir(prev => prev === "desc" ? "asc" : "desc")}
+            >
+              {sortDir === "desc" ? "↓" : "↑"}
+            </button>
           </div>
           <div className="bg-white rounded-2xl shadow p-2 max-h-[60vh] overflow-auto">
             {filtered.length === 0 && (
-              <div className="text-center text-gray-500 py-8">Nincs találat.</div>
+              <div className="text-center text-gray-500 py-8">No finding</div>
             )}
             <ul className="divide-y">
-              {filtered.map(p => (
-                <li key={p.id} className="p-2 hover:bg-gray-50 rounded-xl flex items-center gap-2">
-                  <button className="text-left flex-1" onClick={()=>setSelectedId(p.id)}>
-                    <div className="font-semibold flex items-center justify-between">
-                      <div className="text-left truncate flex items-center flex-1 min-w-0">
-                        <span className={`inline-block w-2 h-2 rounded-full ${p.status==="visited"?"bg-green-500":"bg-blue-500"} mr-3`} />
-                        <span className="truncate">{p.name}</span>
+              {filtered.map(p => {
+                const open = showDetailsAll;
+                return (
+                  <li
+                    key={p.id}
+                    className={`p-2 hover:bg-gray-50 rounded-xl flex gap-2 ${open ? "items-start" : "items-center"}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold flex items-center justify-between">
+                        <div className="text-left truncate flex items-center gap-3 min-w-0" onClick={()=>setSelectedId(p.id)}>
+                          <span className={`inline-block w-2 h-2 rounded-full ${p.status==="visited"?"bg-green-500":"bg-blue-500"}`} />
+                          <span className="truncate ml-3">{p.name}</span>
+                        </div>
+                        <div className="ml-4 text-right text-gray-900 whitespace-nowrap">
+                          {p.dateVisited ? `${p.dateVisited}` : "No date"}
+                        </div>
                       </div>
-                      <div className="ml-4 text-right text-xs text-gray-400">
-                        {p.dateVisited ? `${p.dateVisited}` : "No date"}
-                      </div>
+
+                      {/* Expanded details */}
+                      {open && (
+                        <div className="mt-2 text-xs text-gray-500 flex items-center justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="truncate">
+                              {p.city || ""}{p.city && p.country ? ", " : ""}{p.country || ""}
+                            </div>
+                            <div className="mt-2 flex gap-2 flex-wrap">
+                              {Array.isArray(p.tags) && p.tags.length > 0 && p.tags.map(t => (
+                                <span key={t} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full truncate">{t}</span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="min-w-0 ml-4 text-right text-slate-500">
+                            <div>Rating: {p.rating ?? 0} / 5</div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-xs text-gray-500 flex justify-between items-center">
-                      <div className="text-left truncate">
-                        {p.city || ""}{p.city && p.country ? ", " : ""}{p.country || ""}
-                      </div>
+
+                    {/* Controls: always Modify + Delete, compact icons, right-aligned */}
+                    <div className="ml-2 flex-shrink-0 flex items-center gap-2">
+                      <button
+                        className="w-8 h-8 flex items-center justify-center rounded-lg border text-xs"
+                        title="Modify"
+                        onClick={()=>setEditPlace(p)}
+                        aria-label="Modify"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        className="w-8 h-8 flex items-center justify-center rounded-lg border text-xs text-red-600"
+                        title="Delete"
+                        onClick={()=>confirmDelete(p.id)}
+                        aria-label="Delete"
+                      >
+                        🗑
+                      </button>
                     </div>
-                    <div className="text-xs text-slate-500 mt-1 flex items-center gap-3">
-                      <span>Rating: {p.rating ?? 0} / 5</span>
-                    </div>
-                  </button>
-                  <button className="text-xs px-2 py-1 rounded-lg border" onClick={()=>setEditPlace(p)}>Módosítás</button>
-                  <button className="text-xs px-2 py-1 rounded-lg border text-red-600" onClick={()=>confirmDelete(p.id)}>Törlés</button>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </section>
@@ -766,7 +881,7 @@ export default function App() {
                     </Popup>
                   </Marker>
                 ))}
-                {newCoords && <Marker position={newCoords}><Popup>Új hely kijelölve</Popup></Marker>}
+                {newCoords && <Marker position={newCoords}><Popup>New place selected</Popup></Marker>}
               </MapContainer>
             </div>
           )}
@@ -800,7 +915,7 @@ export default function App() {
                     </Popup>
                   </Marker>
                 ))}
-                {newCoords && <Marker position={newCoords}><Popup>Új hely kijelölve</Popup></Marker>}
+                {newCoords && <Marker position={newCoords}><Popup>New place selected</Popup></Marker>}
               </MapContainer>
             </div>
           </div>,
@@ -812,7 +927,7 @@ export default function App() {
       {showAddModal && (
         <div className="fixed inset-0 z-[1000] bg-black/40 flex items-start md:items-center justify-center overflow-y-auto p-4">
           <div className="bg-white rounded-2xl shadow w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-            <h2 className="font-semibold mb-2">Új hely hozzáadása</h2>
+            <h2 className="font-semibold mb-2">Add new place</h2>
               <form className="grid gap-3" onSubmit={handleAddPlace}>
               <input name="name" className="rounded-xl border p-2" placeholder="Hely neve" required defaultValue={prefillPlace?.name || ""} />
               <input name="country" className="rounded-xl border p-2" placeholder="Ország (név)" defaultValue={prefillPlace?.country || ""} />
@@ -823,8 +938,8 @@ export default function App() {
                 <input name="lng" type="number" step="any" className="rounded-xl border p-2 w-full" placeholder="Hosszúság (lng)" defaultValue={prefillPlace?.lng ?? newCoords?.[1] ?? ''} />
                </div>
               <select name="status" className="rounded-xl border p-2">
-                <option value="visited">Meglátogatott</option>
-                <option value="wishlist">Kívánságlista</option>
+                <option value="visited">Visited</option>
+                <option value="wishlist">Wishlist</option>
               </select>
               <input name="dateVisited" type="date" className="rounded-xl border p-2" />
               <input name="rating" type="number" min={0} max={5} className="rounded-xl border p-2" placeholder="Értékelés (0–5)" />
@@ -879,10 +994,10 @@ export default function App() {
         <div className="fixed inset-0 z-[1000] bg-black/40 flex items-start md:items-center justify-center overflow-y-auto p-4">
           <div className="bg-white rounded-2xl shadow w-full max-w-sm p-6 text-center max-h-[80vh] overflow-y-auto">
             <h2 className="font-semibold mb-2">Are you sure to to be delete it?</h2>
-            <div className="mb-4 text-gray-700">Thic action cannot be reverted</div>
+            <div className="mb-4 text-gray-700">This action cannot be reverted</div>
             <div className="flex gap-2 justify-center">
-              <button className="rounded-xl border p-2 bg-red-500 text-white" onClick={handleDeleteConfirmed}>Törlés</button>
-              <button className="rounded-xl border p-2" onClick={()=>setDeleteId(null)}>Mégse</button>
+              <button className="rounded-xl border p-2 bg-red-500 text-white" onClick={handleDeleteConfirmed}>Delete</button>
+              <button className="rounded-xl border p-2" onClick={()=>setDeleteId(null)}>Cancell</button>
             </div>
           </div>
         </div>
@@ -976,7 +1091,29 @@ export default function App() {
           </div>
         </div>
       )}
-      {/* Footer */}
+      {/* About modal */}
+        {showAbout && (
+          <div className="fixed inset-0 z-[1200] bg-black/40 flex items-start md:items-center justify-center overflow-y-auto p-4">
+            <div className="bg-white rounded-2xl shadow w-full max-w-2xl p-6 max-h-[80vh] overflow-y-auto">
+          <h2 className="font-semibold mb-2 text-lg">What is this site?</h2>
+          <p className="text-sm text-slate-700 mb-3">
+            Holiday Tracking is a simple tool for keeping track of places you've visited or plan to visit. To add places:
+          </p>
+          <ul className="text-sm text-slate-600 list-disc ml-5 mb-3">
+            <li>Find a place using the search box at the top (OpenStreetMap/Nominatim).</li>
+            <li>Select one of the results — the modal will auto-fill the details (country, ISO code, city, coordinates).</li>
+            <li>Set the status (Visited / Wishlist), date, rating and tags, then save.</li>
+            <li>When signed in, places are synced to the Supabase database; when signed out, they remain stored locally (localStorage).</li>
+          </ul>
+          <p className="text-xs text-slate-500 mb-2">Privacy note: if you are not signed in, your data is stored in the browser's localStorage.</p>
+          <p className="text-xs text-slate-500">Database: Supabase (your places are synced there when you log in).</p>
+          <div className="flex justify-end gap-2 mt-4">
+            <button className="rounded-xl border p-2" onClick={() => setShowAbout(false)}>Close</button>
+          </div>
+            </div>
+          </div>
+        )}
+        {/* Footer */}
       <footer className="bg-white mt-4 shadow">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between p-3">
           <div className="text-xs text-gray-500">
